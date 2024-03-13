@@ -38,6 +38,8 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     ConversationHandler,
+    MessageHandler,
+    filters,
 )
 import platform
 import asyncio
@@ -189,6 +191,13 @@ async def end(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     return ConversationHandler.END
 
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """ Handle all messages from customers """
+    # Get the message from the update
+    message = update.message
+    user = update.effective_user
+    # Print messages to the console
+    print(message.text)
 
 def main():
     """Run the bot."""
@@ -197,7 +206,9 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            CommandHandler('report', report)],
+            CommandHandler('report', report),
+            MessageHandler(filters.TEXT, message_handler)
+        ],
         states={
             START_STATE: [
                 CallbackQueryHandler(plus, pattern="^" + str(PLUS) + "$"),
