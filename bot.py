@@ -179,13 +179,16 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_name = update.message.reply_to_message.from_user.name
         reply_user_id = update.effective_user.id #replied user
         reply_user_name = update.effective_user.name
+        chat_id = update.message.chat_id
         if reply_user_id in users:
             if (datetime.now() - users[reply_user_id].user_login_timestamp).total_seconds() >= session_time_out:
                 keyboard = [
                     [InlineKeyboardButton("Verify", callback_data='verify')]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text(f"{reply_user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
+                await update.message.reply_to_message.delete()
+                await update._bot.sendMessage(chat_id, f"{reply_user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
+                # await update.message.reply_text(f"{reply_user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
             else:
                 users[reply_user_id].user_score += 1
         elif reply_user_id != -1:
@@ -196,13 +199,16 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else: # normal user when user only send a message
         user_id = update.effective_user.id 
         user_name = update.effective_user.name
+        chat_id = update.message.chat_id
         if user_id in users:
             if (datetime.now() - users[user_id].user_login_timestamp).total_seconds() >= session_time_out:
                 keyboard = [
                     [InlineKeyboardButton("Verify", callback_data='verify')]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text(f"{user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
+                await update.message.delete()
+                await update._bot.sendMessage(chat_id, f"{user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
+                # await update.message.reply_text(f"{user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
             else:
                 users[user_id].user_score += 1
         elif user_id != -1:
@@ -220,8 +226,12 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # If user_id not in users, then set default
     users.setdefault(user_id, User_information(user_id, user_name, 0, datetime.now() - timedelta(seconds=session_time_out+10)))
     # display profile of this user - users[user_id]
+    user_score = users[user_id].user_score
+    # Calculate rank by comparing scores
+    rank = 1 + sum(1 for user in users.values() if user.user_score > user_score)
+    
     await update.message.reply_html(text=f"{user_name} profile \n \
-    🏆 Rank: {1} \n \
+    🏆 Rank: {rank} \n \
     🪙 Score: {users[user_id].user_score} \n \
     ")
     
