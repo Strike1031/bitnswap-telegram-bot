@@ -4,6 +4,7 @@ import time
 from collections import defaultdict
 import os
 from dotenv import load_dotenv
+import re
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
@@ -137,8 +138,6 @@ async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send message on `/start`."""
-
-    # Get user that sent /start and log his name
     user = update.effective_user
     logger.info("User %s started the conversation.", user.username)
 
@@ -165,49 +164,50 @@ async def handle_verification(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_name = update.effective_user.name
     query = update.callback_query
     chat_id = query.message.chat_id  # This assumes the callback query is from a group chat
-    if user_id in users and (datetime.now() - users[user_id.user_login_timestamp]).total_seconds() >= session_time_out:
+    if user_id in users and (datetime.now() - users[user_id].user_login_timestamp).total_seconds() >= session_time_out:
         await query.message.delete()
-        await query._bot.send_message(chat_id, f"{user_name}, Verification successful. You can continue chatting.")
-        # await query.message.reply_text(f"{user_name}, Verification successful. You can continue chatting.")
+        await query._bot.send_message(chat_id, f"{user_name}, Verification succeed to continue chatting")
         users[user_id].user_login_timestamp = datetime.now()
     else:
         await query.message.delete()
         await query._bot.send_message(chat_id, f"{user_name}, Verification failed. Please try again.")
 
-def set_user_score(user_id, user_name):
-    users[user_id].user_id = user_id
-    users[user_id].user_name = user_name
-    if (user_id in users):
-        users[user_id].user_score += 1
-    else:
-        users[user_id].user_score = 1
-    users[user_id].user_login_timestamp = datetime.now()
-
 # Function to update user score when a message is sent
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = -1
-    user_name = ""
-    if update.message.reply_to_message: # relying user
-        user_id = update.message.reply_to_message.from_user.id
+    if update.message.reply_to_message: # when the user reply one's message
+        user_id = update.message.reply_to_message.from_user.id #original user
         user_name = update.message.reply_to_message.from_user.name
-        print('----original--sender--name--', user_name)
-    else:
-        user_id = update.effective_user.id # normal user
+        reply_user_id = update.effective_user.id #replied user
+        reply_user_name = update.effective_user.name
+        if reply_user_id in users:
+            if (datetime.now() - users[reply_user_id].user_login_timestamp).total_seconds() >= session_time_out:
+                keyboard = [
+                    [InlineKeyboardButton("Verify", callback_data='verify')]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(f"{reply_user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
+            else:
+                users[reply_user_id].user_score += 1
+        elif reply_user_id != -1:
+            users[reply_user_id] = User_information(reply_user_id, reply_user_name, 1, datetime.now())
+            
+        users[user_id].user_score += 1
+        
+    else: # normal user when user only send a message
+        user_id = update.effective_user.id 
         user_name = update.effective_user.name
-        print('---sender--name--', user_name)
-
-    if user_id in users:
-        if (datetime.now() - users[user_id].user_login_timestamp).total_seconds() >= session_time_out:
-            keyboard = [
-                [InlineKeyboardButton("Verify", callback_data='verify')]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(f"{user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
-        else:
-            set_user_score(user_id, user_name)
-    else:
-        users[user_id] = User_information(user_id, user_name, 0, datetime.now())
-        set_user_score(user_id, user_name)
+        if user_id in users:
+            if (datetime.now() - users[user_id].user_login_timestamp).total_seconds() >= session_time_out:
+                keyboard = [
+                    [InlineKeyboardButton("Verify", callback_data='verify')]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(f"{user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
+            else:
+                users[user_id].user_score += 1
+        elif user_id != -1:
+            users[user_id] = User_information(user_id, user_name, 1, datetime.now())
+        
 
 # Function to calculate user rankings
 async def calculate_rankings():
@@ -217,27 +217,19 @@ async def calculate_rankings():
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.name
-    print("show_profile-------")
-    if (user_id in users):
-        pass
-    else:
-        users[user_id] = User_information(user_id, user_name, 0, datetime.now() - timedelta(seconds=session_time_out+10))
-    # print profile of this user - users[user_id]
-    print("this user--------", users[user_id].user_name)
-    print("this user--------", users[user_id].user_score)
-    
-command_info = [
-    BotCommand("start", "Start the bot"),
-    BotCommand("profile", "Show user's profile"),
-]
-
+    # If user_id not in users, then set default
+    users.setdefault(user_id, User_information(user_id, user_name, 0, datetime.now() - timedelta(seconds=session_time_out+10)))
+    # display profile of this user - users[user_id]
+    await update.message.reply_html(text=f"{user_name} profile \n \
+    🏆 Rank: {1} \n \
+    🪙 Score: {users[user_id].user_score} \n \
+    ")
     
 def main():
     # Add new job to scheduler to calculate rankings periodically
     scheduler.add_job(calculate_rankings, 'interval', hours=1)
     """Run the bot."""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    # await application.bot.set_my_commands(command_info)
     
     conv_handler = ConversationHandler(
         entry_points=[
