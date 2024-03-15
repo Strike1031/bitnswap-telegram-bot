@@ -70,7 +70,8 @@ class User_information:
         self.user_login_timestamp = user_login_timestamp
 
 # Array of user information - Important variable
-users = defaultdict(User_information)
+# users = defaultdict(User_information)
+users = {}
 group_chat_id = 0
 """
     Main Initial variables
@@ -87,45 +88,42 @@ FILE_PATH = 'file/report.xlsx'
 """
 
 @sync_to_async
-def post_person(user):
-    models.Person(
-        tg_id=user.id,
-        tg_username=user.username,
-        tg_fullname=user.full_name,
-        arrived_at=get_time(),
-    ).save()
+def save_users_to_database():
+    for user_id, user_info in users.items():
+        models.UserInfo.objects.update_or_create(
+            user_id=user_info.user_id,
+            defaults={
+                'user_name': user_info.user_name,
+                'user_score': user_info.user_score,
+                'user_login_timestamp': user_info.user_login_timestamp
+            }
+        )
 
-@sync_to_async
-def put_person(user, user_id):
-    models.Person.objects.select_related().filter(pk=user_id, tg_id=user.id).update(left_at=get_time())
-
-@sync_to_async
-def get_last_id(user):
-    last_id = models.Person.objects.select_related() \
-        .filter(tg_id=user.id, left_at=None).values_list("pk", flat=True).last()
-    active_id = models.Person.objects.select_related() \
-        .filter(tg_id=user.id).values_list("pk", flat=True).last()
-    if last_id >= active_id:
-        return last_id
-    else:
-        return False
-
+async def load_users_from_database():
+    user_infos = await sync_to_async(list)(models.UserInfo.objects.all())
+    for user_info in user_infos:
+        users[int(user_info.user_id)] = User_information(
+            user_id=int(user_info.user_id),
+            user_name=user_info.user_name,
+            user_score=user_info.user_score,
+            user_login_timestamp=user_info.user_login_timestamp
+        )
 
 @sync_to_async
 def get_data():
-    persons = models.Person.objects.all()
+    persons = models.UserInfo.objects.all()
     serializer = serializers.PersonSerializer(persons, many=True)
 
     all_data = []
     for i in range(0, len(serializer.data)):
-        data = [serializer.data[i]['tg_fullname'], serializer.data[i]['arrived_at'], serializer.data[i]['left_at']]
+        data = [serializer.data[i]['user_id'], serializer.data[i]['user_name'], serializer.data[i]['user_score'], serializer.data[i]['user_login_timestamp']]
         all_data.append(data)
 
     return all_data
 
 
 def set_data(info):
-    pandas.DataFrame(data=info, columns=['name', 'arrived', 'left']).to_excel(FILE_PATH)
+    pandas.DataFrame(data=info, columns=['user_id', 'user_name', 'user_score', 'user_login_timestamp']).to_excel(FILE_PATH)
     return 1
 
 
@@ -134,7 +132,7 @@ def get_time():
     return current_time.strftime('%Y-%m-%d %H:%M:%S')
 
 
-async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def report_to_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     active_data = await get_data()
 
     if set_data(active_data):
@@ -187,9 +185,9 @@ async def handle_verification(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global group_chat_id
     if update.message.reply_to_message: # when the user reply one's message
-        user_id = update.message.reply_to_message.from_user.id #original user
+        user_id = update.message.reply_to_message.from_user.id # original user
         user_name = update.message.reply_to_message.from_user.name
-        reply_user_id = update.effective_user.id #replied user
+        reply_user_id = update.effective_user.id # replied user
         reply_user_name = update.effective_user.name
         chat_id = update.message.chat_id
         group_chat_id =  chat_id # necessary group id for scheduler handle globally
@@ -203,7 +201,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update._bot.sendMessage(chat_id, f"{reply_user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
             else:
                 users[reply_user_id].user_score += 1
-        elif reply_user_id != -1:
+        else:
             users[reply_user_id] = User_information(reply_user_id, reply_user_name, 1, datetime.now(pytz.timezone(settings.TIME_ZONE)))
             
         users[user_id].user_score += 1
@@ -223,10 +221,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update._bot.sendMessage(chat_id, f"{user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
             else:
                 users[user_id].user_score += 1
-        elif user_id != -1:
+        else:
             users[user_id] = User_information(user_id, user_name, 1, datetime.now(pytz.timezone(settings.TIME_ZONE)))
 
 async def reset_user_scores():
+    global users
     for user in users.values():
         user.user_score = 0
         
@@ -243,23 +242,21 @@ async def give_reward(bot: BT):
     # Make all user's daily score 0 at this time -- this is new day!
     await reset_user_scores()
 
-# Save score to database
-async def save_score_to_database():
-    # save all user's score to database to secure
-    print("--------- save_score_to_database ---------------\n")
-
+# /profile command
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.name
     # If user_id not in users, then set default
-    users.setdefault(user_id, User_information(user_id, user_name, 0, datetime.now(pytz.timezone(settings.TIME_ZONE)) - timedelta(seconds=session_time_out+10)))
+    if user_id not in users:
+        print('-----------------------stress-----------------\n\n')
+        users[user_id] = User_information(user_id, user_name, 0, datetime.now(pytz.timezone(settings.TIME_ZONE)) - timedelta(seconds=session_time_out+10))
     # display profile of this user - users[user_id]
     user_score = users[user_id].user_score
     # Calculate rank by comparing scores
     rank = 1 + sum(1 for user in users.values() if user.user_score > user_score)
      # Sort users by score and get  top 3 players
-    top_players = sorted(users.values(), key=lambda x: x.user_score, reverse=True)[:3]  # top 3 player
-
+    sorted_users = sorted(set(users.values()), key=lambda x: (-x.user_score, x.user_id))        
+    top_players = sorted_users[:3] # Get top 3 unique players based on score and then user_id
     # Format top players information
     top_players_info = '\n'.join([f"{i+1}. {player.user_name}: 🪙 {player.user_score}" for i, player in enumerate(top_players)])
     # send reply html
@@ -269,14 +266,15 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     Top 3 Players:\n{top_players_info} \n\n \
     ")
     
-def main():
-
+def main() -> None:
+    # Load all user's data from the database
     """Run the bot."""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
- 
-    # Add new job to scheduler to calculate ranking
-    scheduler.add_job(save_score_to_database, 'interval', hours=1)
-    # Schedule the daily rewards function ( 00:00:00 UTC Every day)
+
+    # Add new job to scheduler to save user data to database every 1 hour to prevent losing data
+    scheduler.add_job(save_users_to_database, 'interval', hours=1)
+    
+    # Schedule the daily rewards function ( 00:00:00 UTC Every day, bot give rewards)
     scheduler.add_job(
         give_reward, 
         trigger=CronTrigger(hour=0, minute=0, second=0, timezone=pytz.timezone(settings.TIME_ZONE)), 
@@ -292,6 +290,7 @@ def main():
             CommandHandler("start", start),
             MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler),
             # CommandHandler("verify", verify_user),
+            CommandHandler("report", report_to_excel),
             CommandHandler("profile", show_profile),
             CallbackQueryHandler(handle_verification, pattern='^verify$'),
         ],
@@ -304,10 +303,14 @@ def main():
 
     application.add_handler(conv_handler)
     # Run the bot until the user presses Ctrl-C
+    # Run application and webserver together
     application.run_polling(allowed_updates=Update.ALL_TYPES)
-    
-    
+
+        
 if __name__ == "__main__":
     if platform.system() == 'Windows':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    main()
+        
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(load_users_from_database())  # load data from database
+    loop.run_until_complete(main())  # main function

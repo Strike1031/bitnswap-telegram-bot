@@ -1,12 +1,8 @@
 from django.db import models
 
-
-class Person(models.Model):
-    tg_id = models.CharField(max_length=254)
-    tg_username = models.CharField(max_length=254)
-    tg_fullname = models.CharField(max_length=254)
-    arrived_at = models.DateTimeField(blank=True, default=None, null=True)
-    left_at = models.DateTimeField(blank=True, default=None, null=True)
-
-    def __str__(self):
-        return self.tg_id
+class UserInfo(models.Model):
+    user_id = models.IntegerField(unique=True)
+    user_name = models.CharField(max_length=255)
+    user_score = models.IntegerField(default=0)
+    user_login_timestamp = models.DateTimeField()
+    

@@ -1,4 +1,4 @@
-from app.models import Person
+from app.models import UserInfo
 from app.serializers import PersonSerializer
 from django.http import Http404
 from rest_framework.views import APIView
@@ -11,7 +11,7 @@ class PersonList(APIView):
     List all Persons, or create a new Person.
     """
     def get(self, request, ):
-        persons = Person.objects.all()
+        persons = UserInfo.objects.all()
         serializer = PersonSerializer(persons, many=True)
         return Response(serializer.data)
 
@@ -29,8 +29,8 @@ class PersonDetail(APIView):
     """
     def get_object(self, pk):
         try:
-            return Person.objects.get(pk=pk)
-        except Person.DoesNotExist:
+            return UserInfo.objects.get(pk=pk)
+        except UserInfo.DoesNotExist:
             raise Http404
 
     def get(self, request, pk,):

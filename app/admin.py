@@ -1,9 +1,9 @@
 from django.contrib import admin
-from .models import Person
+from .models import UserInfo
 
 
 class PersonAdmin(admin.ModelAdmin):
-    list_display = ('tg_id', 'tg_username', 'tg_fullname', 'arrived_at', 'left_at')
+    list_display = ('user_id', 'user_name', 'user_score', 'user_login_timestamp')
 
 
-admin.site.register(Person, PersonAdmin)
+admin.site.register(UserInfo, PersonAdmin)
