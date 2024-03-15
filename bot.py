@@ -1,4 +1,4 @@
-# Telegram Bot using Django
+# Telegram Bot using Django for ONT_coin
 import sys
 import time
 from collections import defaultdict
@@ -28,7 +28,8 @@ from telegram import (
     Update,
     BotCommand,
 )
-
+from telegram.constants import ParseMode
+from telegram.ext._utils.types import BT
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -37,15 +38,17 @@ from telegram.ext import (
     ConversationHandler,
     MessageHandler,
     filters,
+    
 )
 import platform
 import asyncio
 
 from datetime import timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 # Initialize scheduler
-scheduler = AsyncIOScheduler()
+scheduler = AsyncIOScheduler(timezone=pytz.timezone(settings.TIME_ZONE))
 
 # SET Variables
 load_dotenv()
@@ -58,11 +61,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# File path
-FILE_PATH = 'file/report.xlsx'
-
-TELEGRAM_BOT_TOKEN = os.environ.get('BOT_TOKEN')
-# Dictionary to store user scores
+# Information structure for the user
 class User_information:
     def __init__(self, user_id, user_name, user_score, user_login_timestamp):
         self.user_id = user_id
@@ -70,10 +69,22 @@ class User_information:
         self.user_score = user_score
         self.user_login_timestamp = user_login_timestamp
 
+# Array of user information - Important variable
 users = defaultdict(User_information)
+group_chat_id = 0
+"""
+    Main Initial variables
+"""
 
 # Session time out seconds
-session_time_out = 5 # 5 seconds
+session_time_out = 10 * 60 # 10 minutes after, user login expires and he must verify by clicking the button to continue chat.
+TELEGRAM_BOT_TOKEN = os.environ.get('BOT_TOKEN') # Bot token
+# File path
+FILE_PATH = 'file/report.xlsx'
+
+"""
+    Functions
+"""
 
 @sync_to_async
 def post_person(user):
@@ -151,7 +162,7 @@ async def end(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def verify_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = update.effective_user.id
     user_name = update.effective_user.name
-    if user_id in users and (datetime.now() - users[user_id].user_login_timestamp).total_seconds() >= session_time_out:
+    if user_id in users and (datetime.now(pytz.timezone(settings.TIME_ZONE)) - users[user_id].user_login_timestamp).total_seconds() >= session_time_out:
         keyboard = [
             [InlineKeyboardButton("Verify", callback_data='verify')]
         ]
@@ -164,35 +175,36 @@ async def handle_verification(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_name = update.effective_user.name
     query = update.callback_query
     chat_id = query.message.chat_id  # This assumes the callback query is from a group chat
-    if user_id in users and (datetime.now() - users[user_id].user_login_timestamp).total_seconds() >= session_time_out:
+    if user_id in users and (datetime.now(pytz.timezone(settings.TIME_ZONE)) - users[user_id].user_login_timestamp).total_seconds() >= session_time_out:
         await query.message.delete()
         await query._bot.send_message(chat_id, f"{user_name}, Verification succeed to continue chatting")
-        users[user_id].user_login_timestamp = datetime.now()
+        users[user_id].user_login_timestamp = datetime.now(pytz.timezone(settings.TIME_ZONE))
     else:
         await query.message.delete()
         await query._bot.send_message(chat_id, f"{user_name}, Verification failed. Please try again.")
 
 # Function to update user score when a message is sent
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global group_chat_id
     if update.message.reply_to_message: # when the user reply one's message
         user_id = update.message.reply_to_message.from_user.id #original user
         user_name = update.message.reply_to_message.from_user.name
         reply_user_id = update.effective_user.id #replied user
         reply_user_name = update.effective_user.name
         chat_id = update.message.chat_id
+        group_chat_id =  chat_id # necessary group id for scheduler handle globally
         if reply_user_id in users:
-            if (datetime.now() - users[reply_user_id].user_login_timestamp).total_seconds() >= session_time_out:
+            if (datetime.now(pytz.timezone(settings.TIME_ZONE))- users[reply_user_id].user_login_timestamp).total_seconds() >= session_time_out:
                 keyboard = [
                     [InlineKeyboardButton("Verify", callback_data='verify')]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await update.message.reply_to_message.delete()
                 await update._bot.sendMessage(chat_id, f"{reply_user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
-                # await update.message.reply_text(f"{reply_user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
             else:
                 users[reply_user_id].user_score += 1
         elif reply_user_id != -1:
-            users[reply_user_id] = User_information(reply_user_id, reply_user_name, 1, datetime.now())
+            users[reply_user_id] = User_information(reply_user_id, reply_user_name, 1, datetime.now(pytz.timezone(settings.TIME_ZONE)))
             
         users[user_id].user_score += 1
         
@@ -200,46 +212,74 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = update.effective_user.id 
         user_name = update.effective_user.name
         chat_id = update.message.chat_id
+        group_chat_id =  chat_id # necessary group id for scheduler handle globally
         if user_id in users:
-            if (datetime.now() - users[user_id].user_login_timestamp).total_seconds() >= session_time_out:
+            if (datetime.now(pytz.timezone(settings.TIME_ZONE)) - users[user_id].user_login_timestamp).total_seconds() >= session_time_out:
                 keyboard = [
                     [InlineKeyboardButton("Verify", callback_data='verify')]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await update.message.delete()
                 await update._bot.sendMessage(chat_id, f"{user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
-                # await update.message.reply_text(f"{user_name}, please click the button to verify that you're not a bot.", reply_markup=reply_markup)
             else:
                 users[user_id].user_score += 1
         elif user_id != -1:
-            users[user_id] = User_information(user_id, user_name, 1, datetime.now())
+            users[user_id] = User_information(user_id, user_name, 1, datetime.now(pytz.timezone(settings.TIME_ZONE)))
         
+#  reward Function
+async def give_reward(bot: BT):
+    # Sort users by score and get 3 top players
+    top_players = sorted(users.values(), key=lambda x: x.user_score, reverse=True)[:3]
+    # Format top players information
+    top_players_info = "\n".join([f"{i+1}. {player.user_name}: 🪙 {player.user_score}" for i, player in enumerate(top_players)])
+    full_message = f"Today's top 3 players with rewards:\n\n{top_players_info}"
+    # group_chat_id # necessary group id for scheduler handle globally
+    if group_chat_id != 0:
+        await bot.sendMessage(chat_id=group_chat_id, text=full_message, parse_mode=ParseMode.HTML)
 
-# Function to calculate user rankings
-async def calculate_rankings():
-    # Add your ranking calculation logic here
-    pass
+# Save score to database
+async def save_score_to_database():
+    # save all user's score to database to secure
+    print("save_score_to_database!!!!!!!!!!!!!!!")
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.name
     # If user_id not in users, then set default
-    users.setdefault(user_id, User_information(user_id, user_name, 0, datetime.now() - timedelta(seconds=session_time_out+10)))
+    users.setdefault(user_id, User_information(user_id, user_name, 0, datetime.now(pytz.timezone(settings.TIME_ZONE)) - timedelta(seconds=session_time_out+10)))
     # display profile of this user - users[user_id]
     user_score = users[user_id].user_score
     # Calculate rank by comparing scores
     rank = 1 + sum(1 for user in users.values() if user.user_score > user_score)
-    
+     # Sort users by score and get  top 3 players
+    top_players = sorted(users.values(), key=lambda x: x.user_score, reverse=True)[:3]  # top 3 player
+
+    # Format top players information
+    top_players_info = '\n'.join([f"{i+1}. {player.user_name}: 🪙 {player.user_score}" for i, player in enumerate(top_players)])
+    # send reply html
     await update.message.reply_html(text=f"{user_name} profile \n \
     🏆 Rank: {rank} \n \
-    🪙 Score: {users[user_id].user_score} \n \
+    🪙 Score: {users[user_id].user_score} \n\n\n \
+    Top 3 Players:\n{top_players_info} \n\n \
     ")
     
 def main():
-    # Add new job to scheduler to calculate rankings periodically
-    scheduler.add_job(calculate_rankings, 'interval', hours=1)
+
     """Run the bot."""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+ 
+    # Add new job to scheduler to calculate ranking
+    scheduler.add_job(save_score_to_database, 'interval', hours=1)
+    # Schedule the daily rewards function ( 00:00:00 UTC Every day)
+    scheduler.add_job(
+        give_reward, 
+        trigger=CronTrigger(hour=0, minute=0, second=0, timezone=pytz.timezone(settings.TIME_ZONE)), 
+        args=[application.bot],
+        name="daily_rewards"
+    )
+
+    # Start scheduler
+    scheduler.start()
     
     conv_handler = ConversationHandler(
         entry_points=[
@@ -260,8 +300,8 @@ def main():
     # Run the bot until the user presses Ctrl-C
     application.run_polling(allowed_updates=Update.ALL_TYPES)
     
+    
 if __name__ == "__main__":
     if platform.system() == 'Windows':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    # Create a new event loop to ensure a clean start
     main()
