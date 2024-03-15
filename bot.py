@@ -225,6 +225,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 users[user_id].user_score += 1
         elif user_id != -1:
             users[user_id] = User_information(user_id, user_name, 1, datetime.now(pytz.timezone(settings.TIME_ZONE)))
+
+async def reset_user_scores():
+    for user in users.values():
+        user.user_score = 0
         
 #  reward Function
 async def give_reward(bot: BT):
@@ -236,11 +240,13 @@ async def give_reward(bot: BT):
     # group_chat_id # necessary group id for scheduler handle globally
     if group_chat_id != 0:
         await bot.sendMessage(chat_id=group_chat_id, text=full_message, parse_mode=ParseMode.HTML)
+    # Make all user's daily score 0 at this time -- this is new day!
+    await reset_user_scores()
 
 # Save score to database
 async def save_score_to_database():
     # save all user's score to database to secure
-    print("save_score_to_database!!!!!!!!!!!!!!!")
+    print("--------- save_score_to_database ---------------\n")
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
