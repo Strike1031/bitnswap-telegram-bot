@@ -235,7 +235,7 @@ async def give_reward(bot: BT):
     top_players = sorted(users.values(), key=lambda x: x.user_score, reverse=True)[:3]
     # Format top players information
     top_players_info = "\n".join([f"{i+1}. {player.user_name}: 🪙 {player.user_score}" for i, player in enumerate(top_players)])
-    full_message = f"Today's top 3 players with rewards:\n\n{top_players_info}"
+    full_message = f"Today's 🏆 top 3 players with rewards:\n\n{top_players_info}"
     # group_chat_id # necessary group id for scheduler handle globally
     if group_chat_id != 0:
         await bot.sendMessage(chat_id=group_chat_id, text=full_message, parse_mode=ParseMode.HTML)
@@ -265,6 +265,14 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     🪙 Score: {users[user_id].user_score} \n\n\n \
     Top 3 Players:\n{top_players_info} \n\n \
     ")
+
+async def display_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_html(text=f" Welcome to our vibrant community! \n\n \
+    Here, every message you post earns you points. \n \
+    When another member responds to your post, you'll gain additional points, increasing your score. \n \
+    Every day, at midnight (UTC+0), we celebrate by awarding rewards to the 🏆 top 3 users with the highest 🪙 scores. \n\n \
+    Join us daily for challenges and 😊enjoy the camaraderie!  \n \
+    ")
     
 def main() -> None:
     # Load all user's data from the database
@@ -292,6 +300,7 @@ def main() -> None:
             # CommandHandler("verify", verify_user),
             CommandHandler("report", report_to_excel),
             CommandHandler("profile", show_profile),
+            CommandHandler("info", display_info),
             CallbackQueryHandler(handle_verification, pattern='^verify$'),
         ],
         states={
