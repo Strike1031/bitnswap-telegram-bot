@@ -149,6 +149,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send message on `/start`."""
     user = update.effective_user
     logger.info("User %s started the conversation.", user.username)
+    await update.message.reply_html(text=f" \n \
+        🌟 Step into ONT coin community! 🌟 \n\n \
+        Chat to earn token ONT coin 🦾 \n\n \
+        In this dynamic hub, each message you share isn't just a chat—it's a chance to boost your status! 💬 Every interaction catapults you toward greater heights, as your ONT coin soar with each response. 🚀 \n\n \
+        As the clock strikes midnight (UTC+0), brace yourself for the ultimate showdown as we crown the champions of the day—the triumphant trio who've amassed the most dazzling scores! 🎉🥇 \n\n \
+        Don't miss out on our daily dose of excitement and camaraderie. Dive into our challenges, connect with fellow enthusiasts, and let the good vibes flow! 😎✨ \n\n \
+        Every ONT coin give you access to Boost 🤘Gift🥋 and others surprises 😮 \n \
+    ")
 
 async def end(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Returns `ConversationHandler.END`, which tells the
@@ -240,7 +248,7 @@ async def give_reward(bot: BT):
     if group_chat_id != 0:
         await bot.sendMessage(chat_id=group_chat_id, text=full_message, parse_mode=ParseMode.HTML)
     # Make all user's daily score 0 at this time -- this is new day!
-    await reset_user_scores()
+    # await reset_user_scores()
 
 # /profile command
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -248,7 +256,6 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.name
     # If user_id not in users, then set default
     if user_id not in users:
-        print('-----------------------stress-----------------\n\n')
         users[user_id] = User_information(user_id, user_name, 0, datetime.now(pytz.timezone(settings.TIME_ZONE)) - timedelta(seconds=session_time_out+10))
     # display profile of this user - users[user_id]
     user_score = users[user_id].user_score
@@ -267,11 +274,13 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ")
 
 async def display_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_html(text=f" Welcome to our vibrant community! \n\n \
-    Here, every message you post earns you points. \n \
-    When another member responds to your post, you'll gain additional points, increasing your score. \n \
-    Every day, at midnight (UTC+0), we celebrate by awarding rewards to the 🏆 top 3 users with the highest 🪙 scores. \n\n \
-    Join us daily for challenges and 😊enjoy the camaraderie!  \n \
+    await update.message.reply_html(text=f" \n \
+        🌟 Step into ONT coin community! 🌟 \n\n \
+        Chat to earn token ONT coin 🦾 \n\n \
+        In this dynamic hub, each message you share isn't just a chat—it's a chance to boost your status! 💬 Every interaction catapults you toward greater heights, as your ONT coin soar with each response. 🚀 \n\n \
+        As the clock strikes midnight (UTC+0), brace yourself for the ultimate showdown as we crown the champions of the day—the triumphant trio who've amassed the most dazzling scores! 🎉🥇 \n\n \
+        Don't miss out on our daily dose of excitement and camaraderie. Dive into our challenges, connect with fellow enthusiasts, and let the good vibes flow! 😎✨ \n\n \
+        Every ONT coin give you access to Boost 🤘Gift🥋 and others surprises 😮 \n \
     ")
     
 def main() -> None:
@@ -279,8 +288,8 @@ def main() -> None:
     """Run the bot."""
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Add new job to scheduler to save user data to database every 1 hour to prevent losing data
-    scheduler.add_job(save_users_to_database, 'interval', hours=1)
+    # Add new job to scheduler to save user data to database every 10 minutes to prevent losing data
+    scheduler.add_job(save_users_to_database, 'interval', minutes=10)
     
     # Schedule the daily rewards function ( 00:00:00 UTC Every day, bot give rewards)
     scheduler.add_job(
